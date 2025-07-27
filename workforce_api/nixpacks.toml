@@ -1,12 +1,19 @@
 [providers]
 python = {}
 
-[build]
-cmd = ["pip", "install", "-r", "requirements.txt"]
+[phases.setup]
+nixPkgs = ["python311", "pip"]
 
-[start] 
-cmd = ["uvicorn", "workforce_api.main:app", "--host", "0.0.0.0", "--port", "$PORT"]
+[phases.install]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
+
+[phases.build]
+cmds = ["echo 'Build complete'"]
+
+[start]
+cmd = "uvicorn workforce_api.main:app --host 0.0.0.0 --port $PORT"
 
 [variables]
 PYTHONPATH = "/app"
-NIXPACKS_PYTHON_VERSION = "3.11" 
+NIXPACKS_PYTHON_VERSION = "3.11"
+PIP_DISABLE_PIP_VERSION_CHECK = "1" 

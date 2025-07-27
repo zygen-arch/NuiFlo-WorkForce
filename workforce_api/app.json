@@ -1,0 +1,28 @@
+{
+  "name": "NuiFlo WorkForce API",
+  "description": "AI Team Management Platform powered by CrewAI",
+  "keywords": ["python", "fastapi", "ai", "crewai"],
+  "stack": "heroku-22",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "env": {
+    "PYTHON_VERSION": {
+      "value": "3.11.9"
+    },
+    "WEB_CONCURRENCY": {
+      "value": "2"
+    }
+  },
+  "scripts": {
+    "postdeploy": "echo 'Deployment complete'"
+  }
+} 
