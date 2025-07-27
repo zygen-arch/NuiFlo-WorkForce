@@ -25,7 +25,15 @@ class Settings(BaseSettings):
     # App Configuration
     debug: bool = Field(False, env="DEBUG")
     cors_origins: List[str] = Field(
-        default=["http://localhost:5173", "http://localhost:3000"], 
+        default=[
+            "http://localhost:5173",
+            "http://localhost:3000", 
+            "http://localhost:3001",
+            "https://*.vercel.app",
+            "https://*.netlify.app",
+            "https://*.lovableproject.com",
+            "https://199b6c59-7083-4e1c-9e5e-e73805023c1b.lovableproject.com"
+        ], 
         env="CORS_ORIGINS"
     )
     

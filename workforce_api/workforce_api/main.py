@@ -60,8 +60,8 @@ app = FastAPI(
             "description": "Development server"
         },
         {
-            "url": "https://api.nuiflo.com",
-            "description": "Production server (future)"
+            "url": "https://nuiflo-workforce.onrender.com",
+            "description": "Production server"
         }
     ],
     openapi_tags=[
@@ -76,9 +76,10 @@ app = FastAPI(
     ]
 )
 
+# CORS configuration - allow all origins for development since Lovable uses dynamic URLs
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["*"],  # Allow all origins for development
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
