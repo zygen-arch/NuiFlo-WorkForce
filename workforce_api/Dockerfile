@@ -3,14 +3,11 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install UV
-RUN pip install uv
-
 # Copy dependency files
-COPY pyproject.toml ./
+COPY requirements.txt ./
 
 # Install dependencies
-RUN uv pip install --system --no-cache -r pyproject.toml
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY workforce_api/ ./workforce_api/
