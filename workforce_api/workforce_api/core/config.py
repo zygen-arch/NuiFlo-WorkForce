@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # Alternative: Full database URL (for Railway, Render, etc.)
     database_url: str = Field(default="", env="DATABASE_URL", description="Full database URL")
     
+    # Supabase Auth Configuration
+    supabase_url: str = Field(default="", env="SUPABASE_URL", description="Supabase project URL")
+    supabase_anon_key: str = Field(default="", env="SUPABASE_ANON_KEY", description="Supabase anonymous key")
+    supabase_service_key: str = Field(default="", env="SUPABASE_SERVICE_KEY", description="Supabase service role key")
+    
     # App Configuration
     debug: bool = Field(False, env="DEBUG")
     cors_origins: List[str] = Field(
@@ -36,6 +41,11 @@ class Settings(BaseSettings):
         ], 
         env="CORS_ORIGINS"
     )
+    
+    # Security Configuration
+    jwt_secret: str = Field(default="dev-secret-change-in-production", env="JWT_SECRET")
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    jwt_expiration_hours: int = Field(default=24, env="JWT_EXPIRATION_HOURS")
     
     # Server Configuration
     port: int = Field(8000, env="PORT")
@@ -70,6 +80,12 @@ class Settings(BaseSettings):
     @property
     def is_debug(self) -> bool:
         return bool(self.debug and not self.is_production)
+    
+    @computed_field
+    @property
+    def auth_enabled(self) -> bool:
+        """Check if Supabase authentication is properly configured."""
+        return bool(self.supabase_url and self.supabase_anon_key)
 
 @lru_cache()
 def get_settings() -> Settings:  # pragma: no cover
