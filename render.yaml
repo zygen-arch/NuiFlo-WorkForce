@@ -6,7 +6,7 @@ services:
     plan: free
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: cd workforce_api && python -m alembic upgrade head && cd .. && uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd workforce_api && python -m alembic upgrade head && uvicorn workforce_api.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
