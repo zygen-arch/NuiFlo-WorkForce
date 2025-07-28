@@ -13,7 +13,7 @@ class TeamExecution(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
-    status = Column(String, nullable=False, default=TeamStatus.RUNNING.value)
+    status = Column(String, nullable=False, default=TeamStatus.running.value)
     result = Column(Text)  # Final crew output
     error_message = Column(Text)
     execution_metadata = Column(JSON)  # Input params, context
@@ -40,7 +40,7 @@ class TaskExecution(Base):
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     task_name = Column(String(100), nullable=False)
     task_description = Column(Text)
-    status = Column(String, nullable=False, default=TeamStatus.RUNNING.value)
+    status = Column(String, nullable=False, default=TeamStatus.running.value)
     
     input_data = Column(JSON)
     output_data = Column(JSON)
