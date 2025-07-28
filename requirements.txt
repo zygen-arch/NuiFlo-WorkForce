@@ -21,5 +21,5 @@ ollama==0.1.7
 openai==1.51.2
 anthropic==0.37.1
 
-# Development utilities
-httpx==0.27.2
+# Development utilities (compatible with ollama)
+httpx==0.25.2
