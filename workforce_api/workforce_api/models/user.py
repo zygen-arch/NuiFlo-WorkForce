@@ -19,4 +19,5 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    teams = relationship("Team", back_populates="owner", cascade="all, delete-orphan") 
+    # Note: Teams are now linked via Supabase auth.users (auth_owner_id), not this local users table
+    # teams = relationship("Team", back_populates="owner", cascade="all, delete-orphan")  # REMOVED 

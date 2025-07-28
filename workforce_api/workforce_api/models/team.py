@@ -30,6 +30,7 @@ class Team(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
+    # Relationships  
+    # Note: auth_owner_id references auth.users in Supabase, no SQLAlchemy relationship needed
     roles = relationship("Role", back_populates="team", cascade="all, delete-orphan")
     executions = relationship("TeamExecution", back_populates="team", cascade="all, delete-orphan") 

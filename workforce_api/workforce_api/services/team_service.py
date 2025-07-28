@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from ..models import Team, Role, User, TeamStatus, ExpertiseLevel
+from ..models import Team, Role, TeamStatus, ExpertiseLevel
 from ..core.database import SessionLocal
 from .crew_extensions import create_crew_from_team
 import structlog
