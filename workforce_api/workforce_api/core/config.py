@@ -1,7 +1,7 @@
 """Application configuration (Supabase).
 """
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 import os
 from urllib.parse import quote_plus
 
@@ -27,6 +27,23 @@ class Settings(BaseSettings):
     supabase_anon_key: str = Field(default="", env="SUPABASE_ANON_KEY", description="Supabase anonymous key")
     supabase_service_key: str = Field(default="", env="SUPABASE_SERVICE_KEY", description="Supabase service role key")
     
+    # JWT Configuration
+    jwt_secret: str = Field(default="your-secret-key", env="JWT_SECRET")
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    jwt_expiration_hours: int = Field(default=24, env="JWT_EXPIRATION_HOURS")
+    
+    # LLM API Keys for Hybrid System
+    openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
+    anthropic_api_key: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
+    
+    # Ollama Configuration (local)
+    ollama_host: str = Field(default="http://localhost:11434", env="OLLAMA_HOST")
+    ollama_model: str = Field(default="mistral:7b-instruct", env="OLLAMA_MODEL")
+    
+    # Hybrid LLM Settings
+    default_quality_preference: str = Field(default="balanced", env="DEFAULT_QUALITY_PREFERENCE")  # fast, balanced, premium
+    max_budget_per_task: float = Field(default=1.0, env="MAX_BUDGET_PER_TASK")  # Default $1 per task
+    
     # App Configuration
     debug: bool = Field(False, env="DEBUG")
     cors_origins: List[str] = Field(
@@ -41,11 +58,6 @@ class Settings(BaseSettings):
         ], 
         env="CORS_ORIGINS"
     )
-    
-    # Security Configuration
-    jwt_secret: str = Field(default="dev-secret-change-in-production", env="JWT_SECRET")
-    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
-    jwt_expiration_hours: int = Field(default=24, env="JWT_EXPIRATION_HOURS")
     
     # Server Configuration
     port: int = Field(8000, env="PORT")
