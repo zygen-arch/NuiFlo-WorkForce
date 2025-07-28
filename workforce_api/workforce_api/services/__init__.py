@@ -1,6 +1,6 @@
-"""Business logic services."""
+"""Service layer for workforce management."""
 
-from .crew_extensions import NuiFloAgent, NuiFloTask, NuiFloCrew
 from .team_service import TeamService
+# from .crew_extensions import NuiFloAgent, NuiFloTask, NuiFloCrew  # Temporarily disabled
 
-__all__ = ["NuiFloAgent", "NuiFloTask", "NuiFloCrew", "TeamService"] 
+__all__ = ["TeamService"] 

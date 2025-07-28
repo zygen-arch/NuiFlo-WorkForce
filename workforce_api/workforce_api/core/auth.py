@@ -1,19 +1,21 @@
 """Authentication utilities for Supabase integration."""
 
-from fastapi import HTTPException, Depends, status
+from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-import jwt
-import requests
-from typing import Optional
-import logging
+import structlog
+from jose import jwt, JWTError  # Use python-jose instead of PyJWT
+import httpx
 
 from .config import get_settings
-from .database import get_db_dependency
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 settings = get_settings()
-security = HTTPBearer()
+
+# HTTP Bearer token extractor
+security = HTTPBearer(auto_error=False)
 
 class SupabaseAuth:
     """Supabase authentication handler."""

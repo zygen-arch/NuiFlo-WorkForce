@@ -19,10 +19,12 @@ from enum import Enum
 from decimal import Decimal
 from dataclasses import dataclass
 import re
+import json
 
-import ollama
+# import ollama  # Temporarily disabled due to dependency conflicts
 from openai import OpenAI
 import anthropic
+import httpx
 
 from .config import get_settings
 
@@ -73,19 +75,22 @@ class ComplexityAnalyzer:
     """Analyzes task complexity to determine optimal LLM routing"""
     
     def __init__(self):
-        self.ollama_client = None
+        self.ollama_available = False
         self._initialize_ollama()
     
     def _initialize_ollama(self):
-        """Initialize connection to local Ollama"""
+        """Initialize connection to local Ollama via HTTP API"""
         try:
-            self.ollama_client = ollama.Client(host='http://localhost:11434')
-            # Test connection
-            self.ollama_client.list()
-            logger.info("🧠 Ollama connection established")
+            # Check if Ollama is available via HTTP
+            response = httpx.get('http://localhost:11434/api/version', timeout=5.0)
+            if response.status_code == 200:
+                self.ollama_available = True
+                logger.info("🧠 Ollama HTTP API connection established")
+            else:
+                logger.warning("⚠️ Ollama HTTP API not responding")
         except Exception as e:
             logger.warning(f"⚠️ Ollama not available: {e}")
-            self.ollama_client = None
+            self.ollama_available = False
     
     def analyze_complexity(self, prompt: str, context: Optional[str] = None) -> ComplexityLevel:
         """
@@ -102,7 +107,7 @@ class ComplexityAnalyzer:
         heuristic_score = self._heuristic_complexity_score(prompt)
         
         # If Ollama is available, use it for deeper analysis
-        if self.ollama_client and heuristic_score > 0.3:
+        if self.ollama_available and heuristic_score > 0.3:
             try:
                 llm_score = self._llm_complexity_analysis(prompt, context)
                 # Combine scores (weighted average)
@@ -183,14 +188,20 @@ class ComplexityAnalyzer:
         """
         
         try:
-            response = self.ollama_client.generate(
-                model='mistral:7b-instruct',
-                prompt=analysis_prompt,
-                options={'temperature': 0.1, 'num_predict': 10}
+            response = httpx.post(
+                'http://localhost:11434/api/generate',
+                json={
+                    'model': 'mistral:7b-instruct',
+                    'prompt': analysis_prompt,
+                    'options': {'temperature': 0.1, 'num_predict': 10}
+                },
+                timeout=10.0
             )
             
+            response.raise_for_status() # Raise an exception for HTTP errors
+            
             # Extract numeric score from response
-            text = response['response'].strip()
+            text = response.json()['response'].strip()
             score_match = re.search(r'([0-1]?\.?\d+)', text)
             
             if score_match:
@@ -200,8 +211,11 @@ class ComplexityAnalyzer:
                 logger.warning(f"Could not parse complexity score: {text}")
                 return 0.5  # Default to medium
                 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Ollama HTTP API complexity analysis failed with status {e.response.status_code}: {e}")
+            raise
         except Exception as e:
-            logger.error(f"Ollama complexity analysis failed: {e}")
+            logger.error(f"Ollama HTTP API complexity analysis failed: {e}")
             raise
 
 
@@ -236,7 +250,7 @@ class IntelligentLLMRouter:
         """Initialize all LLM clients"""
         # Ollama (local)
         try:
-            self.ollama_client = ollama.Client(host='http://localhost:11434')
+            self.ollama_client = httpx.Client(base_url='http://localhost:11434')
             logger.info("🧠 Ollama client initialized")
         except Exception as e:
             logger.warning(f"Ollama initialization failed: {e}")
@@ -454,17 +468,23 @@ class IntelligentLLMRouter:
     
     def _execute_ollama(self, model: str, prompt: str, **kwargs) -> Dict[str, Any]:
         """Execute request using Ollama (FREE!)"""
-        response = self.ollama_client.generate(
-            model=model,
-            prompt=prompt,
-            options=kwargs.get('options', {'temperature': 0.7})
+        response = self.ollama_client.post(
+            '/api/generate',
+            json={
+                'model': model,
+                'prompt': prompt,
+                'options': kwargs.get('options', {'temperature': 0.7})
+            },
+            timeout=10.0
         )
         
+        response.raise_for_status() # Raise an exception for HTTP errors
+        
         # Estimate tokens (Ollama doesn't provide exact count)
-        estimated_tokens = len(response['response'].split()) * 1.3
+        estimated_tokens = len(response.json()['response'].split()) * 1.3
         
         return {
-            'content': response['response'],
+            'content': response.json()['response'],
             'tokens': int(estimated_tokens)
         }
     
