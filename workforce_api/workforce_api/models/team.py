@@ -9,11 +9,10 @@ from enum import Enum
 from . import Base
 
 class TeamStatus(Enum):
-    idle = "idle"
-    running = "running" 
-    paused = "paused"
-    completed = "completed"
-    failed = "failed"
+    IDLE = "IDLE"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 class Team(Base):
     __tablename__ = "teams"
@@ -25,7 +24,7 @@ class Team(Base):
     description = Column(Text, nullable=True)
     monthly_budget = Column(Numeric(10, 2), nullable=False)
     current_spend = Column(Numeric(10, 2), default=0.0)
-    status = Column(SQLEnum(TeamStatus), default=TeamStatus.idle)
+    status = Column(SQLEnum(TeamStatus), default=TeamStatus.IDLE)
     last_executed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

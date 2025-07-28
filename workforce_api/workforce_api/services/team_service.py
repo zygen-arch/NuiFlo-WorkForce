@@ -47,7 +47,7 @@ class TeamService:
                 auth_owner_id=owner_id,  # UUID from Supabase
                 description=description,
                 monthly_budget=monthly_budget,
-                status=TeamStatus.idle
+                status=TeamStatus.IDLE
             )
             db.add(team)
             db.flush()  # Get team ID
