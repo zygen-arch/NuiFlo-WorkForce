@@ -6,13 +6,43 @@ After the migration runs successfully, you'll need to complete these steps manua
 
 ### **1. Add Foreign Key Constraint & Check (Database → SQL Editor)**
 
+**🚨 QUICK FIX - If you see "constraint already exists" error:**
+
+Just run these remaining constraints (foreign key already exists from migration):
+
+```sql
+-- Add constraint to ensure email matches auth.users
+ALTER TABLE public.profiles 
+ADD CONSTRAINT email_matches_auth_user 
+CHECK (email = (SELECT email FROM auth.users WHERE id = profiles.id));
+
+-- Make email unique  
+ALTER TABLE public.profiles 
+ADD CONSTRAINT profiles_email_unique UNIQUE (email);
+```
+
+**📋 Complete version with checks:**
+
 Run this SQL to properly link profiles to auth.users with validation:
 
 ```sql
--- Add foreign key constraint from profiles to auth.users
-ALTER TABLE public.profiles 
-ADD CONSTRAINT profiles_id_fkey 
-FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
+-- Check if foreign key constraint already exists (from migration)
+SELECT conname FROM pg_constraint 
+WHERE conname = 'profiles_id_fkey' AND conrelid = 'public.profiles'::regclass;
+
+-- Add foreign key constraint ONLY if it doesn't exist
+-- (Our migration might have already created this)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'profiles_id_fkey' AND conrelid = 'public.profiles'::regclass
+    ) THEN
+        ALTER TABLE public.profiles 
+        ADD CONSTRAINT profiles_id_fkey 
+        FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
+    END IF;
+END $$;
 
 -- Add constraint to ensure email matches auth.users
 ALTER TABLE public.profiles 
