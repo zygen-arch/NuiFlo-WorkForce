@@ -11,14 +11,12 @@ After the migration runs successfully, you'll need to complete these steps manua
 Just run these remaining constraints (foreign key already exists from migration):
 
 ```sql
--- Add constraint to ensure email matches auth.users
-ALTER TABLE public.profiles 
-ADD CONSTRAINT email_matches_auth_user 
-CHECK (email = (SELECT email FROM auth.users WHERE id = profiles.id));
-
--- Make email unique  
+-- Make email unique (this is the main constraint we need)
 ALTER TABLE public.profiles 
 ADD CONSTRAINT profiles_email_unique UNIQUE (email);
+
+-- Note: Email validation will be handled by the trigger function
+-- (CHECK constraints can't use subqueries in PostgreSQL)
 ```
 
 **📋 Complete version with checks:**
@@ -44,14 +42,12 @@ BEGIN
     END IF;
 END $$;
 
--- Add constraint to ensure email matches auth.users
-ALTER TABLE public.profiles 
-ADD CONSTRAINT email_matches_auth_user 
-CHECK (email = (SELECT email FROM auth.users WHERE id = profiles.id));
-
--- Make email unique
+-- Make email unique (this is the main constraint we need)
 ALTER TABLE public.profiles 
 ADD CONSTRAINT profiles_email_unique UNIQUE (email);
+
+-- Note: Email validation will be handled by the trigger function
+-- (CHECK constraints can't use subqueries in PostgreSQL)
 ```
 
 ### **2. Create Improved User Profile Trigger (Database → SQL Editor)**
@@ -67,10 +63,11 @@ SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
   -- Insert a new profile when a new user is created in auth.users
+  -- The trigger ensures email consistency, so no need for CHECK constraint
   INSERT INTO public.profiles (id, email, full_name)
   VALUES (
     NEW.id, 
-    NEW.email, 
+    NEW.email,  -- This comes directly from auth.users, so it's automatically consistent
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'User')
   )
   ON CONFLICT (id) DO NOTHING;
