@@ -3,10 +3,10 @@ fastapi==0.115.9
 uvicorn[standard]==0.32.0
 python-multipart==0.0.9
 
-# Database
+# Database (Python 3.13 compatible)
 sqlalchemy==2.0.35
 alembic==1.13.3
-psycopg2-binary==2.9.9
+psycopg[binary]==3.2.3
 
 # Configuration and logging
 pydantic-settings==2.6.0

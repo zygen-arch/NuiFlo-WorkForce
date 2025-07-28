@@ -75,9 +75,10 @@ class Settings(BaseSettings):
         if self.database_url:
             return self.database_url
         
-        # Otherwise, construct from individual components
+        # Otherwise, construct from individual components  
         # Password is already URL-encoded in .env file, so use it directly
-        return f"postgresql+psycopg2://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}?sslmode=require"
+        # Using psycopg3 for Python 3.13 compatibility
+        return f"postgresql+psycopg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}?sslmode=require"
 
     @computed_field
     @property 
