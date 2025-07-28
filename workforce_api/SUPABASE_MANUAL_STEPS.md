@@ -132,7 +132,7 @@ Create a test user to verify everything works:
 -- This should be done through your frontend, but you can test manually:
 -- 1. Go to Authentication → Users in Supabase Dashboard
 -- 2. Click "Add User" 
--- 3. Add email: test@nuiflo.com, password: TestPassword123!
+-- 3. Add email: test@nuiflo.com, password: TestPassword123
 -- 4. Check that a profile was automatically created in public.profiles
 ```
 

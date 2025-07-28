@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from ..models import Team, Role, TeamStatus, ExpertiseLevel
 from ..core.database import SessionLocal
-from .crew_extensions import create_crew_from_team
+from .hybrid_crew_extensions import create_hybrid_crew_from_team
 import structlog
 
 logger = structlog.get_logger()
@@ -175,7 +175,7 @@ class TeamService:
                 raise ValueError(f"Team {team.name} has exceeded monthly budget")
             
             # Create and execute crew
-            crew = create_crew_from_team(team)
+            crew = create_hybrid_crew_from_team(team)
             result = crew.execute_with_tracking(inputs)
             
             return result
