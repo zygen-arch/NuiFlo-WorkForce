@@ -17,13 +17,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Apply RLS security policies and add auth_owner_id column."""
+    """Apply RLS security policies and add Supabase Auth integration."""
     
-    # Step 1: Add auth_owner_id column to teams table (without foreign key for now)
+    # Step 1: Add auth_owner_id column to teams table for Supabase Auth
     op.add_column('teams', sa.Column('auth_owner_id', postgresql.UUID(), nullable=True))
     op.create_index('idx_teams_auth_owner_id', 'teams', ['auth_owner_id'])
     
-    # Step 2: Create profiles table for future Supabase Auth integration
+    # Step 2: Create profiles table linked to Supabase auth.users
     op.create_table('profiles',
         sa.Column('id', postgresql.UUID(), nullable=False),
         sa.Column('email', sa.Text(), nullable=True),
@@ -34,6 +34,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id')
     )
     
+    # Note: Foreign key to auth.users will be added manually in Supabase dashboard
+    # as it requires special permissions
+    
     # Step 3: Enable Row Level Security on all tables
     op.execute("ALTER TABLE users ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE teams ENABLE ROW LEVEL SECURITY")
@@ -42,17 +45,7 @@ def upgrade() -> None:
     op.execute("ALTER TABLE task_executions ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE profiles ENABLE ROW LEVEL SECURITY")
     
-    # Step 4: Create security helper functions (using dummy auth for now)
-    op.execute("""
-        CREATE OR REPLACE FUNCTION public.current_user_id()
-        RETURNS text
-        LANGUAGE sql STABLE
-        AS $$
-          -- For now, return dummy user ID. In production with Supabase, this would be auth.uid()
-          SELECT '1'::text;
-        $$;
-    """)
-    
+    # Step 4: Create security helper functions for Supabase
     op.execute("""
         CREATE OR REPLACE FUNCTION public.user_owns_team(team_id integer)
         RETURNS boolean
@@ -62,8 +55,8 @@ def upgrade() -> None:
             SELECT 1 FROM teams 
             WHERE id = team_id 
             AND (
-              auth_owner_id::text = public.current_user_id()
-              OR owner_id::text = public.current_user_id()
+              auth_owner_id = auth.uid()
+              OR owner_id = auth.uid()::text::integer
             )
           );
         $$;
@@ -90,43 +83,43 @@ def upgrade() -> None:
     # Step 5: Create RLS policies for users table
     op.execute("""
         CREATE POLICY "Users can view own profile" ON users
-          FOR SELECT USING (id::text = public.current_user_id());
+          FOR SELECT USING (id = auth.uid()::text::integer);
     """)
     
     op.execute("""
         CREATE POLICY "Users can update own profile" ON users
-          FOR UPDATE USING (id::text = public.current_user_id());
+          FOR UPDATE USING (id = auth.uid()::text::integer);
     """)
     
     op.execute("""
         CREATE POLICY "Users can insert own profile" ON users
-          FOR INSERT WITH CHECK (id::text = public.current_user_id());
+          FOR INSERT WITH CHECK (id = auth.uid()::text::integer);
     """)
     
     # Step 6: Create RLS policies for teams table
     op.execute("""
         CREATE POLICY "Users can view own teams" ON teams
           FOR SELECT USING (
-            COALESCE(auth_owner_id::text = public.current_user_id(), owner_id::text = public.current_user_id())
+            COALESCE(auth_owner_id = auth.uid(), owner_id = auth.uid()::text::integer)
           );
     """)
     
     op.execute("""
         CREATE POLICY "Users can create teams" ON teams
-          FOR INSERT WITH CHECK (owner_id::text = public.current_user_id());
+          FOR INSERT WITH CHECK (auth_owner_id = auth.uid());
     """)
     
     op.execute("""
         CREATE POLICY "Users can update own teams" ON teams
           FOR UPDATE USING (
-            COALESCE(auth_owner_id::text = public.current_user_id(), owner_id::text = public.current_user_id())
+            COALESCE(auth_owner_id = auth.uid(), owner_id = auth.uid()::text::integer)
           );
     """)
     
     op.execute("""
         CREATE POLICY "Users can delete own teams" ON teams
           FOR DELETE USING (
-            COALESCE(auth_owner_id::text = public.current_user_id(), owner_id::text = public.current_user_id())
+            COALESCE(auth_owner_id = auth.uid(), owner_id = auth.uid()::text::integer)
           );
     """)
     
@@ -186,17 +179,32 @@ def upgrade() -> None:
     # Step 10: Create RLS policies for profiles table
     op.execute("""
         CREATE POLICY "Users can view own profile" ON profiles
-          FOR SELECT USING (id::text = public.current_user_id());
+          FOR SELECT USING (auth.uid() = id);
     """)
     
     op.execute("""
         CREATE POLICY "Users can update own profile" ON profiles
-          FOR UPDATE USING (id::text = public.current_user_id());
+          FOR UPDATE USING (auth.uid() = id);
     """)
     
     op.execute("""
         CREATE POLICY "Users can insert own profile" ON profiles
-          FOR INSERT WITH CHECK (id::text = public.current_user_id());
+          FOR INSERT WITH CHECK (auth.uid() = id);
+    """)
+    
+    # Step 11: Create trigger function for auto-creating profiles
+    op.execute("""
+        CREATE OR REPLACE FUNCTION public.handle_new_user()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        SECURITY DEFINER SET search_path = public
+        AS $$
+        BEGIN
+          INSERT INTO public.profiles (id, email, full_name)
+          VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name');
+          RETURN new;
+        END;
+        $$;
     """)
 
 
@@ -234,7 +242,7 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS public.user_owns_team(integer)")
     op.execute("DROP FUNCTION IF EXISTS public.get_team_from_role(integer)")
     op.execute("DROP FUNCTION IF EXISTS public.get_team_from_execution(integer)")
-    op.execute("DROP FUNCTION IF EXISTS public.current_user_id()")
+    op.execute("DROP FUNCTION IF EXISTS public.handle_new_user()")
     
     # Disable RLS
     op.execute("ALTER TABLE users DISABLE ROW LEVEL SECURITY")
