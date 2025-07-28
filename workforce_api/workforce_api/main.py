@@ -1,7 +1,11 @@
 """Entry point FastAPI app."""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 import logging
+import time
+from collections import defaultdict, deque
+from typing import Dict, Deque
 
 from .core.config import get_settings
 from .core.database import init_database
@@ -12,6 +16,56 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+# Rate limiting storage (in production, use Redis)
+rate_limit_storage: Dict[str, Deque[float]] = defaultdict(deque)
+
+class RateLimitMiddleware:
+    """Simple rate limiting middleware"""
+    
+    def __init__(self, calls_per_minute: int = 60):
+        self.calls_per_minute = calls_per_minute
+        self.window_seconds = 60
+    
+    async def __call__(self, request: Request, call_next):
+        # Get client IP
+        client_ip = request.client.host
+        current_time = time.time()
+        
+        # Clean old entries
+        user_calls = rate_limit_storage[client_ip]
+        while user_calls and user_calls[0] < current_time - self.window_seconds:
+            user_calls.popleft()
+        
+        # Check rate limit
+        if len(user_calls) >= self.calls_per_minute:
+            logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+            raise HTTPException(
+                status_code=429, 
+                detail="Rate limit exceeded. Please try again later."
+            )
+        
+        # Record this call
+        user_calls.append(current_time)
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Add security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self'; "
+            "font-src 'self'"
+        )
+        
+        return response
 
 app = FastAPI(
     title="NuiFlo WorkForce API",
@@ -84,6 +138,10 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+# Add rate limiting and security headers
+rate_limiter = RateLimitMiddleware(calls_per_minute=100)  # 100 calls per minute per IP
+app.middleware("http")(rate_limiter)
 
 # Initialize database on startup
 @app.on_event("startup")

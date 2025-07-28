@@ -3,10 +3,12 @@
 from typing import List, Optional, Dict, Any
 from decimal import Decimal
 from datetime import datetime
+import html
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from ...core.database import get_db_dependency
 from ...core.auth import get_current_user
@@ -18,6 +20,19 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
+def sanitize_string(value: str) -> str:
+    """Sanitize string input to prevent XSS attacks."""
+    if not isinstance(value, str):
+        return value
+    
+    # Remove HTML tags and escape special characters
+    value = re.sub(r'<[^>]*>', '', value)  # Remove HTML tags
+    value = html.escape(value)  # Escape HTML characters
+    value = value.strip()  # Remove leading/trailing whitespace
+    
+    return value
+
+
 # Request/Response models
 class RoleCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -27,23 +42,104 @@ class RoleCreate(BaseModel):
     llm_config: Optional[Dict[str, Any]] = None
     agent_config: Optional[Dict[str, Any]] = None
     is_active: bool = True
+    
+    @field_validator('title')
+    @classmethod
+    def sanitize_title(cls, v):
+        if v:
+            return sanitize_string(v)
+        return v
+    
+    @field_validator('description')
+    @classmethod
+    def sanitize_description(cls, v):
+        if v:
+            return sanitize_string(v)
+        return v
+    
+    @field_validator('llm_model')
+    @classmethod
+    def validate_llm_model(cls, v):
+        # Whitelist allowed LLM models
+        allowed_models = [
+            'gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 
+            'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'
+        ]
+        if v not in allowed_models:
+            raise ValueError(f'LLM model must be one of: {", ".join(allowed_models)}')
+        return v
 
 
 class TeamCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=1000)
-    monthly_budget: Decimal = Field(..., gt=0, description="Monthly budget in USD")
+    monthly_budget: Decimal = Field(..., gt=0, le=10000, description="Monthly budget in USD (max $10,000)")
     roles: List[RoleCreate] = Field(default_factory=list, max_length=10)
+    
+    @field_validator('name')
+    @classmethod
+    def sanitize_name(cls, v):
+        return sanitize_string(v)
+    
+    @field_validator('description')
+    @classmethod 
+    def sanitize_description(cls, v):
+        if v:
+            return sanitize_string(v)
+        return v
+    
+    @field_validator('roles')
+    @classmethod
+    def validate_roles(cls, v):
+        if len(v) > 10:
+            raise ValueError('Maximum 10 roles allowed per team')
+        return v
 
 
 class TeamUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=1000)
-    monthly_budget: Optional[Decimal] = Field(None, gt=0)
+    monthly_budget: Optional[Decimal] = Field(None, gt=0, le=10000)
+    
+    @field_validator('name')
+    @classmethod
+    def sanitize_name(cls, v):
+        if v:
+            return sanitize_string(v)
+        return v
+    
+    @field_validator('description')
+    @classmethod
+    def sanitize_description(cls, v):
+        if v:
+            return sanitize_string(v)
+        return v
 
 
 class TeamExecute(BaseModel):
     inputs: Optional[Dict[str, Any]] = Field(None, description="Execution inputs")
+    
+    @field_validator('inputs')
+    @classmethod
+    def validate_inputs(cls, v):
+        if v is None:
+            return v
+        
+        # Limit input size to prevent abuse
+        if len(str(v)) > 10000:
+            raise ValueError('Input data too large (max 10,000 characters)')
+        
+        # Sanitize string values in inputs
+        if isinstance(v, dict):
+            sanitized = {}
+            for key, value in v.items():
+                if isinstance(value, str):
+                    sanitized[sanitize_string(key)] = sanitize_string(value)
+                else:
+                    sanitized[sanitize_string(key)] = value
+            return sanitized
+        
+        return v
 
 
 class RoleResponse(BaseModel):
@@ -318,7 +414,7 @@ def execute_team(
         # Execute team workflow
         inputs = execution_data.inputs if execution_data else {}
         
-        result = TeamService.execute_team_workflow(team_id, inputs, db)
+        result = TeamService.execute_team(team_id, inputs, db)
         
         return ExecutionResponse.model_validate(result)
         
