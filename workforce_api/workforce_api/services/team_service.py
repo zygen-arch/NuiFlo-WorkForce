@@ -20,7 +20,7 @@ class TeamService:
     @staticmethod
     def create_team(
         name: str,
-        owner_id: int,
+        owner_id: str,  # Changed to str for UUID
         monthly_budget: Decimal,
         description: Optional[str] = None,
         roles_data: Optional[List[Dict[str, Any]]] = None,
@@ -31,7 +31,7 @@ class TeamService:
         
         Args:
             name: Team name
-            owner_id: User ID of team owner
+            owner_id: UUID of team owner (from Supabase auth)
             monthly_budget: Monthly budget in USD
             description: Optional team description
             roles_data: List of role configurations
@@ -41,20 +41,13 @@ class TeamService:
             Created Team instance
         """
         def _create_team_internal(db: Session) -> Team:
-            # Verify owner exists
-            owner_result = db.execute(select(User).where(User.id == owner_id))
-            owner = owner_result.scalar_one_or_none()
-            if not owner:
-                raise ValueError(f"User with ID {owner_id} not found")
-            
-            # Create team
+            # Create team with auth_owner_id
             team = Team(
                 name=name,
-                owner_id=owner_id,
+                auth_owner_id=owner_id,  # UUID from Supabase
                 description=description,
                 monthly_budget=monthly_budget,
-                current_spend=Decimal("0.00"),
-                status=TeamStatus.IDLE
+                status=TeamStatus.idle
             )
             db.add(team)
             db.flush()  # Get team ID
@@ -117,29 +110,25 @@ class TeamService:
                 return _get_team_internal(db)
     
     @staticmethod
-    def list_user_teams(
-        user_id: int,
-        session: Optional[Session] = None
-    ) -> List[Team]:
+    def list_user_teams(owner_id: str, session: Optional[Session] = None) -> List[Team]:  # Changed to str
         """
-        List all teams owned by a user.
+        Get all teams for a user.
         
         Args:
-            user_id: User ID
+            owner_id: UUID of team owner (from Supabase auth)
             session: Optional database session
             
         Returns:
             List of Team instances
         """
         def _list_teams_internal(db: Session) -> List[Team]:
-            stmt = (
+            result = db.execute(
                 select(Team)
+                .where(Team.auth_owner_id == owner_id)  # Use auth_owner_id
                 .options(selectinload(Team.roles))
-                .where(Team.owner_id == user_id)
                 .order_by(Team.created_at.desc())
             )
-            result = db.execute(stmt)
-            return list(result.scalars().all())
+            return result.scalars().all()
         
         if session:
             return _list_teams_internal(session)

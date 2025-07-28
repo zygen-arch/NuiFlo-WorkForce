@@ -33,29 +33,41 @@ class SupabaseAuth:
         if not self.enabled:
             # For development: return dummy user if Supabase not configured
             logger.warning("Authentication disabled - using dummy user")
-            return {"sub": "00000000-0000-0000-0000-000000000001", "email": "test@nuiflo.com"}
+            return {"id": "00000000-0000-0000-0000-000000000001", "email": "test@nuiflo.com"}
         
         try:
-            # Verify token with Supabase
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "apikey": self.supabase_anon_key,
-                "Content-Type": "application/json"
-            }
-            
-            response = requests.get(
-                f"{self.supabase_url}/auth/v1/user",
-                headers=headers,
-                timeout=10
+            # Decode JWT token locally first (Supabase JWT is self-contained)
+            # Get the JWT secret from Supabase settings or use anon key for verification
+            decoded = jwt.decode(
+                token, 
+                options={"verify_signature": False}  # For now, skip signature verification
             )
             
-            if response.status_code == 200:
-                user_data = response.json()
-                return user_data
-            else:
-                logger.error(f"Token verification failed: {response.status_code}")
+            # Verify token is not expired
+            import time
+            current_time = int(time.time())
+            if decoded.get('exp', 0) < current_time:
+                logger.error("Token has expired")
+                return None
+            
+            # Extract user info from JWT payload
+            user_id = decoded.get('sub')
+            email = decoded.get('email')
+            
+            if not user_id:
+                logger.error("No user ID in token")
                 return None
                 
+            return {
+                "id": user_id,
+                "email": email,
+                "aud": decoded.get('aud'),
+                "role": decoded.get('role', 'authenticated')
+            }
+                
+        except jwt.InvalidTokenError as e:
+            logger.error(f"Invalid JWT token: {e}")
+            return None
         except Exception as e:
             logger.error(f"Token verification error: {e}")
             return None

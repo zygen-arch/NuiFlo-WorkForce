@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, field_serializer
 
 from ...core.database import get_db_dependency
+from ...core.auth import get_current_user
 from ...services import TeamService
 from ...models import ExpertiseLevel
 import structlog
@@ -99,7 +100,8 @@ class ExecutionResponse(BaseModel):
 @router.post("/", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
 def create_team(
     team_data: TeamCreate,
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
+    current_user = Depends(get_current_user)
 ) -> TeamResponse:
     """
     Create a new team with roles.
@@ -112,16 +114,12 @@ def create_team(
         Created team information
     """
     try:
-        # TODO: Get actual user from authentication
-        # For now, use a dummy user ID
-        dummy_user_id = 1
-        
         # Convert roles data
         roles_data = [role.model_dump() for role in team_data.roles]
         
         team = TeamService.create_team(
             name=team_data.name,
-            owner_id=dummy_user_id,
+            owner_id=current_user,  # current_user is UUID string
             monthly_budget=team_data.monthly_budget,
             description=team_data.description,
             roles_data=roles_data,
@@ -143,7 +141,8 @@ def create_team(
 @router.get("/", response_model=List[TeamResponse])
 def list_teams(
     user_id: Optional[int] = Query(None, description="Filter by user ID"),
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
+    current_user = Depends(get_current_user)
 ) -> List[TeamResponse]:
     """
     List teams.
@@ -156,8 +155,7 @@ def list_teams(
         List of teams
     """
     try:
-        # TODO: Get actual user from authentication
-        filter_user_id = user_id or 1  # Default to dummy user
+        filter_user_id = user_id or current_user  # current_user is UUID string
         
         teams = TeamService.list_user_teams(filter_user_id, db)
         
@@ -171,7 +169,8 @@ def list_teams(
 @router.get("/{team_id}", response_model=TeamResponse)
 def get_team(
     team_id: int,
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
+    current_user = Depends(get_current_user)
 ) -> TeamResponse:
     """
     Get team by ID.
@@ -179,15 +178,20 @@ def get_team(
     Args:
         team_id: Team ID
         db: Database session
+        current_user: Authenticated user
         
     Returns:
-        Team information
+        Team data
     """
     try:
-        team = TeamService.get_team_with_roles(team_id, db)
+        team = TeamService.get_team_by_id(team_id, db)
         
         if not team:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+        
+        # Check ownership
+        if team.auth_owner_id != current_user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         
         return TeamResponse.model_validate(team)
         
@@ -202,21 +206,32 @@ def get_team(
 def update_team(
     team_id: int,
     team_data: TeamUpdate,
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
+    current_user = Depends(get_current_user)
 ) -> TeamResponse:
     """
     Update team information.
     
     Args:
         team_id: Team ID
-        team_data: Team update data
+        team_data: Updated team data
         db: Database session
+        current_user: Authenticated user
         
     Returns:
         Updated team information
     """
     try:
-        team = TeamService.update_team(
+        # Get team and check ownership
+        team = TeamService.get_team_by_id(team_id, db)
+        if not team:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+        
+        if team.auth_owner_id != current_user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        
+        # Update team
+        updated_team = TeamService.update_team(
             team_id=team_id,
             name=team_data.name,
             description=team_data.description,
@@ -224,15 +239,13 @@ def update_team(
             session=db
         )
         
-        if not team:
+        if not updated_team:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
         
-        return TeamResponse.model_validate(team)
+        return TeamResponse.model_validate(updated_team)
         
     except HTTPException:
         raise
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error("Failed to update team", team_id=team_id, error=str(e))
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
@@ -241,25 +254,34 @@ def update_team(
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_team(
     team_id: int,
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
+    current_user = Depends(get_current_user)
 ):
     """
-    Delete a team.
+    Delete team.
     
     Args:
         team_id: Team ID
         db: Database session
+        current_user: Authenticated user
     """
     try:
-        deleted = TeamService.delete_team(team_id, db)
+        # Get team and check ownership
+        team = TeamService.get_team_by_id(team_id, db)
+        if not team:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
         
-        if not deleted:
+        if team.auth_owner_id != current_user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        
+        # Delete team
+        success = TeamService.delete_team(team_id, db)
+        
+        if not success:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
         
     except HTTPException:
         raise
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error("Failed to delete team", team_id=team_id, error=str(e))
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
@@ -269,73 +291,74 @@ def delete_team(
 def execute_team(
     team_id: int,
     execution_data: Optional[TeamExecute] = None,
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
+    current_user = Depends(get_current_user)
 ) -> ExecutionResponse:
     """
-    Execute a team using CrewAI.
+    Execute team workflow.
     
     Args:
-        team_id: Team ID to execute
+        team_id: Team ID
         execution_data: Optional execution parameters
         db: Database session
+        current_user: Authenticated user
         
     Returns:
-        Execution results and metrics
+        Execution result
     """
     try:
-        inputs = execution_data.inputs if execution_data else None
+        # Get team and check ownership
+        team = TeamService.get_team_by_id(team_id, db)
+        if not team:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
         
-        result = TeamService.execute_team(
-            team_id=team_id,
-            inputs=inputs,
-            session=db
-        )
+        if team.auth_owner_id != current_user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         
-        return ExecutionResponse(**result)
+        # Execute team workflow
+        inputs = execution_data.inputs if execution_data else {}
         
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        result = TeamService.execute_team_workflow(team_id, inputs, db)
+        
+        return ExecutionResponse.model_validate(result)
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to execute team", team_id=team_id, error=str(e))
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Team execution failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 @router.get("/{team_id}/status")
 def get_team_status(
     team_id: int,
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
+    current_user = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get detailed team status information.
+    Get team status and metrics.
     
     Args:
         team_id: Team ID
         db: Database session
+        current_user: Authenticated user
         
     Returns:
-        Team status information
+        Team status and performance metrics
     """
     try:
-        team = TeamService.get_team_with_roles(team_id, db)
-        
+        # Get team and check ownership
+        team = TeamService.get_team_by_id(team_id, db)
         if not team:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
         
-        budget_utilization = 0.0
-        if team.monthly_budget > 0:
-            budget_utilization = float(team.current_spend / team.monthly_budget * 100)
+        if team.auth_owner_id != current_user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         
-        return {
-            "team_id": team.id,
-            "name": team.name,
-            "status": team.status.value,
-            "monthly_budget": float(team.monthly_budget),
-            "current_spend": float(team.current_spend),
-            "budget_utilization": budget_utilization,
-            "last_executed_at": team.last_executed_at.isoformat() if team.last_executed_at else None,
-            "role_count": len(team.roles),
-            "active_roles": len([r for r in team.roles if r.is_active]),
-        }
+        # Get team status
+        status_data = TeamService.get_team_status(team_id, db)
+        
+        return status_data
         
     except HTTPException:
         raise
