@@ -1,10 +1,24 @@
 # 🚀 **NuiFlo WorkForce API - Frontend Integration Guide**
 
+## 🚨 **CRITICAL SECURITY UPDATE (2025-01-27)**
+
+**AUTHENTICATION IS NOW REQUIRED FOR ALL API ENDPOINTS!** 🔐
+
+All API endpoints now require valid Supabase JWT tokens. **Unauthenticated requests will receive 401 Unauthorized.**
+
+### **Security Features Now Active:**
+✅ **JWT Authentication**: All endpoints require `Authorization: Bearer <token>`  
+✅ **Ownership Validation**: Users can only access their own teams/data  
+✅ **RLS Security**: Database enforces row-level security policies  
+✅ **Proper Error Responses**: 401 Unauthorized, 403 Forbidden as needed  
+
+---
+
 ## 📋 **Production-Ready Backend Status**
 
 ✅ **API Deployed**: `https://nuiflo-workforce.onrender.com`  
 ✅ **Database**: Supabase PostgreSQL with RLS security  
-✅ **Authentication**: Supabase Auth integration ready  
+✅ **Authentication**: Supabase Auth integration **ACTIVE & REQUIRED**  
 ✅ **Auto Profile Creation**: SQL trigger creates profiles on signup  
 ✅ **CORS**: Configured for all frontend URLs  
 ✅ **Documentation**: Full OpenAPI/Swagger at `/docs`  
@@ -53,10 +67,13 @@ headers: {
 
 ### **Base URL:** `https://nuiflo-workforce.onrender.com`
 
+**⚠️ IMPORTANT: All endpoints require authentication via `Authorization: Bearer <jwt>` header**
+
 ### **Health Check:**
 ```javascript
 GET /health/ping
 // Returns: {"status": "healthy", "timestamp": "2025-01-27T..."}
+// NOTE: This is the ONLY endpoint that doesn't require authentication
 ```
 
 ### **Team Management:**
