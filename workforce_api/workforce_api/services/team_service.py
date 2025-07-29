@@ -3,7 +3,7 @@
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..models import Team, Role, TeamStatus, ExpertiseLevel
 from ..core.database import SessionLocal
@@ -90,6 +90,20 @@ class TeamService:
         else:
             with SessionLocal() as db:
                 return _get_team_internal(db)
+    
+    @staticmethod
+    def get_team_with_roles(team_id: int, session: Optional[Session] = None) -> Optional[Team]:
+        """Get team by ID with roles loaded"""
+        def _get_team_with_roles_internal(db: Session) -> Optional[Team]:
+            return db.query(Team).options(
+                selectinload(Team.roles)
+            ).filter(Team.id == team_id).first()
+        
+        if session:
+            return _get_team_with_roles_internal(session)
+        else:
+            with SessionLocal() as db:
+                return _get_team_with_roles_internal(db)
     
     @staticmethod
     def list_user_teams(owner_id: str, session: Optional[Session] = None) -> List[Team]:
