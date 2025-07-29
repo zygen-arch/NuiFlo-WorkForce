@@ -5,6 +5,7 @@ from decimal import Decimal
 from datetime import datetime
 import html
 import re
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
@@ -176,6 +177,14 @@ class TeamResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     roles: List[RoleResponse] = []
+
+    @field_validator('auth_owner_id', mode='before')
+    @classmethod
+    def convert_uuid_to_string(cls, v):
+        """Convert UUID objects to strings."""
+        if isinstance(v, UUID):
+            return str(v)
+        return v
 
     @field_serializer('created_at', 'updated_at', 'last_executed_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
