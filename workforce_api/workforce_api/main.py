@@ -144,8 +144,8 @@ app.add_middleware(
     allow_credentials=True,
 )
 
-# Add rate limiting and security headers
-rate_limiter = RateLimitMiddleware(calls_per_minute=100)  # 100 calls per minute per IP
+# Add rate limiting and security headers (disabled for development)
+rate_limiter = RateLimitMiddleware(calls_per_minute=10000)  # Very high limit for development testing
 app.middleware("http")(rate_limiter)
 
 # Initialize database on startup
