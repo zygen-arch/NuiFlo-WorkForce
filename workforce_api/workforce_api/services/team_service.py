@@ -42,11 +42,18 @@ class TeamService:
             # Add roles if provided
             if roles_data:
                 for role_data in roles_data:
+                    # Handle expertise level - it might be an enum or string
+                    expertise_value = role_data.get('expertise', 'INTERMEDIATE')
+                    if isinstance(expertise_value, ExpertiseLevel):
+                        expertise = expertise_value
+                    else:
+                        expertise = ExpertiseLevel[expertise_value.upper()]
+                    
                     role = Role(
                         team_id=team.id,
                         title=role_data.get('title', 'Team Member'),
                         description=role_data.get('description', ''),
-                        expertise=ExpertiseLevel[role_data.get('expertise', 'INTERMEDIATE').upper()],
+                        expertise=expertise,
                         llm_model=role_data.get('llm_model', 'gpt-3.5-turbo'),
                         system_prompt=role_data.get('system_prompt', ''),
                         is_active=role_data.get('is_active', True)
