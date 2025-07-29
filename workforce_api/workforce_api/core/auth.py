@@ -6,7 +6,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import structlog
-from jose import jwt, JWTError  # Use python-jose instead of PyJWT
 import httpx
 
 from .config import get_settings
@@ -18,58 +17,52 @@ settings = get_settings()
 security = HTTPBearer(auto_error=False)
 
 class SupabaseAuth:
-    """Supabase authentication handler."""
+    """Supabase authentication handler using API keys."""
     
     def __init__(self):
         self.supabase_url = getattr(settings, 'supabase_url', None)
-        self.supabase_anon_key = getattr(settings, 'supabase_anon_key', None)
+        self.supabase_service_key = getattr(settings, 'supabase_service_key', None)
         
-        if not self.supabase_url or not self.supabase_anon_key:
+        if not self.supabase_url or not self.supabase_service_key:
             logger.warning("Supabase credentials not configured. Authentication disabled.")
             self.enabled = False
         else:
             self.enabled = True
     
-    def verify_token(self, token: str) -> Optional[dict]:
-        """Verify Supabase JWT token and return user info."""
+    async def verify_user_token(self, token: str) -> Optional[dict]:
+        """Verify user token using Supabase Auth API."""
         if not self.enabled:
             # For development: return dummy user if Supabase not configured
             logger.warning("Authentication disabled - using dummy user")
             return {"id": "00000000-0000-0000-0000-000000000001", "email": "test@nuiflo.com"}
         
         try:
-            # Decode JWT token locally first (Supabase JWT is self-contained)
-            # Get the JWT secret from Supabase settings or use anon key for verification
-            decoded = jwt.decode(
-                token, 
-                options={"verify_signature": False}  # For now, skip signature verification
-            )
-            
-            # Verify token is not expired
-            import time
-            current_time = int(time.time())
-            if decoded.get('exp', 0) < current_time:
-                logger.error("Token has expired")
-                return None
-            
-            # Extract user info from JWT payload
-            user_id = decoded.get('sub')
-            email = decoded.get('email')
-            
-            if not user_id:
-                logger.error("No user ID in token")
-                return None
-                
-            return {
-                "id": user_id,
-                "email": email,
-                "aud": decoded.get('aud'),
-                "role": decoded.get('role', 'authenticated')
+            # Use Supabase Auth API to verify the token
+            headers = {
+                "apikey": self.supabase_service_key,
+                "Authorization": f"Bearer {self.supabase_service_key}"
             }
+            
+            # Get user info from Supabase Auth API
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.supabase_url}/auth/v1/user",
+                    headers=headers,
+                    params={"access_token": token}
+                )
                 
-        except jwt.InvalidTokenError as e:
-            logger.error(f"Invalid JWT token: {e}")
-            return None
+                if response.status_code == 200:
+                    user_data = response.json()
+                    logger.debug(f"Successfully verified user: {user_data.get('id')}")
+                    return {
+                        "id": user_data.get("id"),
+                        "email": user_data.get("email"),
+                        "role": user_data.get("role", "authenticated")
+                    }
+                else:
+                    logger.error(f"Supabase Auth API error: {response.status_code} - {response.text}")
+                    return None
+                    
         except Exception as e:
             logger.error(f"Token verification error: {e}")
             return None
@@ -81,14 +74,14 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> str:
     """
-    Extract and verify user from Supabase JWT token.
+    Extract and verify user from Supabase token.
     Returns the user ID (UUID string).
     """
     try:
         token = credentials.credentials
         
-        # Verify token
-        user_data = auth_handler.verify_token(token)
+        # Verify token using Supabase Auth API
+        user_data = await auth_handler.verify_user_token(token)
         
         if not user_data or "id" not in user_data:
             raise HTTPException(

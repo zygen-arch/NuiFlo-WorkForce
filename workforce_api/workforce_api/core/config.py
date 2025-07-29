@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     supabase_service_key: str = Field(default="", env="SUPABASE_SERVICE_KEY", description="Supabase service role key")
     
     # JWT Configuration
-    jwt_secret: str = Field(default="your-secret-key", env="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
     jwt_expiration_hours: int = Field(default=24, env="JWT_EXPIRATION_HOURS")
     

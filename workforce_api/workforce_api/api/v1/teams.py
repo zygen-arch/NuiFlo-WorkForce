@@ -61,10 +61,19 @@ class RoleCreate(BaseModel):
     @field_validator('llm_model')
     @classmethod
     def validate_llm_model(cls, v):
-        # Whitelist allowed LLM models
+        # Whitelist allowed LLM models including Ollama models
         allowed_models = [
+            # OpenAI Models
             'gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 
-            'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'
+            # Anthropic Models
+            'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku',
+            # Ollama Models (local)
+            'deepseek-coder:6.7b', 'deepseek-coder:33b', 'deepseek-coder:1.3b',
+            'llama2:7b', 'llama2:13b', 'llama2:70b',
+            'mistral:7b', 'mistral:13b',
+            'codellama:7b', 'codellama:13b', 'codellama:34b',
+            'neural-chat:7b', 'neural-chat:13b',
+            # Add more Ollama models as needed
         ]
         if v not in allowed_models:
             raise ValueError(f'LLM model must be one of: {", ".join(allowed_models)}')
@@ -441,33 +450,268 @@ def get_team_status(
     db: Session = Depends(get_db_dependency),
     current_user = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """
-    Get team status and metrics.
-    
-    Args:
-        team_id: Team ID
-        db: Database session
-        current_user: Authenticated user
-        
-    Returns:
-        Team status and performance metrics
-    """
+    """Get team execution status and metrics."""
     try:
-        # Get team and check ownership
-        team = TeamService.get_team_by_id(team_id, db)
+        team = TeamService.get_team_by_id(db, team_id, current_user)
         if not team:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+            raise HTTPException(status_code=404, detail="Team not found")
         
-        if team.auth_owner_id != current_user:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        # Get latest execution
+        latest_execution = None
+        if team.executions:
+            latest_execution = max(team.executions, key=lambda x: x.created_at)
         
-        # Get team status
-        status_data = TeamService.get_team_status(team_id, db)
-        
-        return status_data
-        
-    except HTTPException:
-        raise
+        return {
+            "team_id": team.id,
+            "name": team.name,
+            "status": team.status.value,
+            "current_spend": float(team.current_spend),
+            "monthly_budget": float(team.monthly_budget),
+            "budget_remaining": float(team.monthly_budget - team.current_spend),
+            "last_executed_at": latest_execution.created_at.isoformat() if latest_execution else None,
+            "total_executions": len(team.executions),
+            "active_roles": len([r for r in team.roles if r.is_active])
+        }
     except Exception as e:
-        logger.error("Failed to get team status", team_id=team_id, error=str(e))
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error") 
+        logger.error(f"Error getting team status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/models/available")
+def get_available_models() -> Dict[str, Any]:
+    """Get available LLM models with metadata."""
+    models = {
+        "openai": {
+            "gpt-4": {
+                "name": "GPT-4",
+                "description": "Most capable GPT model, best for complex reasoning",
+                "cost_per_1k_tokens": 0.03,
+                "max_tokens": 8192,
+                "capabilities": ["reasoning", "coding", "analysis", "creative"],
+                "provider": "openai"
+            },
+            "gpt-4-turbo": {
+                "name": "GPT-4 Turbo",
+                "description": "Faster and more efficient GPT-4 variant",
+                "cost_per_1k_tokens": 0.01,
+                "max_tokens": 128000,
+                "capabilities": ["reasoning", "coding", "analysis", "creative"],
+                "provider": "openai"
+            },
+            "gpt-3.5-turbo": {
+                "name": "GPT-3.5 Turbo",
+                "description": "Fast and cost-effective for most tasks",
+                "cost_per_1k_tokens": 0.002,
+                "max_tokens": 4096,
+                "capabilities": ["coding", "analysis", "creative"],
+                "provider": "openai"
+            }
+        },
+        "anthropic": {
+            "claude-3-opus": {
+                "name": "Claude 3 Opus",
+                "description": "Most capable Claude model for complex tasks",
+                "cost_per_1k_tokens": 0.015,
+                "max_tokens": 200000,
+                "capabilities": ["reasoning", "coding", "analysis", "creative"],
+                "provider": "anthropic"
+            },
+            "claude-3-sonnet": {
+                "name": "Claude 3 Sonnet",
+                "description": "Balanced performance and cost",
+                "cost_per_1k_tokens": 0.003,
+                "max_tokens": 200000,
+                "capabilities": ["reasoning", "coding", "analysis", "creative"],
+                "provider": "anthropic"
+            },
+            "claude-3-haiku": {
+                "name": "Claude 3 Haiku",
+                "description": "Fastest and most cost-effective Claude",
+                "cost_per_1k_tokens": 0.00025,
+                "max_tokens": 200000,
+                "capabilities": ["coding", "analysis", "creative"],
+                "provider": "anthropic"
+            }
+        },
+        "ollama": {
+            "deepseek-coder:6.7b": {
+                "name": "DeepSeek Coder 6.7B",
+                "description": "Specialized coding model, runs locally",
+                "cost_per_1k_tokens": 0.0,  # Free when running locally
+                "max_tokens": 4096,
+                "capabilities": ["coding", "analysis"],
+                "provider": "ollama",
+                "local": True
+            },
+            "deepseek-coder:33b": {
+                "name": "DeepSeek Coder 33B",
+                "description": "Larger coding model with better reasoning",
+                "cost_per_1k_tokens": 0.0,
+                "max_tokens": 4096,
+                "capabilities": ["coding", "analysis", "reasoning"],
+                "provider": "ollama",
+                "local": True
+            },
+            "llama2:7b": {
+                "name": "Llama 2 7B",
+                "description": "General purpose model, good balance",
+                "cost_per_1k_tokens": 0.0,
+                "max_tokens": 4096,
+                "capabilities": ["coding", "analysis", "creative"],
+                "provider": "ollama",
+                "local": True
+            },
+            "mistral:7b": {
+                "name": "Mistral 7B",
+                "description": "Fast and efficient general model",
+                "cost_per_1k_tokens": 0.0,
+                "max_tokens": 8192,
+                "capabilities": ["coding", "analysis", "creative"],
+                "provider": "ollama",
+                "local": True
+            }
+        }
+    }
+    
+    return {
+        "models": models,
+        "providers": {
+            "openai": "Cloud-based, paid per token",
+            "anthropic": "Cloud-based, paid per token", 
+            "ollama": "Local deployment, free to run"
+        }
+    }
+
+
+@router.get("/templates/available")
+def get_team_templates() -> Dict[str, Any]:
+    """Get available team templates for quick setup."""
+    templates = {
+        "startup_mvp": {
+            "name": "Startup MVP Team",
+            "description": "Perfect for building a minimum viable product",
+            "budget_range": {"min": 50, "max": 200},
+            "roles": [
+                {
+                    "title": "Product Manager",
+                    "description": "Defines product vision and requirements",
+                    "expertise": "senior",
+                    "llm_model": "gpt-4",
+                    "agent_config": {
+                        "backstory": "You are an experienced product manager who excels at defining clear product requirements and user stories.",
+                        "goal": "Create detailed product specifications and user stories"
+                    }
+                },
+                {
+                    "title": "Full Stack Developer",
+                    "description": "Builds the complete application",
+                    "expertise": "senior",
+                    "llm_model": "deepseek-coder:6.7b",
+                    "agent_config": {
+                        "backstory": "You are a skilled full-stack developer who can build complete applications from frontend to backend.",
+                        "goal": "Implement the complete application based on requirements"
+                    }
+                },
+                {
+                    "title": "UI/UX Designer",
+                    "description": "Creates user interface and experience",
+                    "expertise": "intermediate",
+                    "llm_model": "gpt-3.5-turbo",
+                    "agent_config": {
+                        "backstory": "You are a creative UI/UX designer who focuses on user-centered design principles.",
+                        "goal": "Design intuitive and beautiful user interfaces"
+                    }
+                }
+            ]
+        },
+        "data_science": {
+            "name": "Data Science Team",
+            "description": "For data analysis and machine learning projects",
+            "budget_range": {"min": 100, "max": 500},
+            "roles": [
+                {
+                    "title": "Data Scientist",
+                    "description": "Analyzes data and builds ML models",
+                    "expertise": "expert",
+                    "llm_model": "gpt-4",
+                    "agent_config": {
+                        "backstory": "You are a senior data scientist with expertise in statistical analysis and machine learning.",
+                        "goal": "Analyze data and build predictive models"
+                    }
+                },
+                {
+                    "title": "Data Engineer",
+                    "description": "Builds data pipelines and infrastructure",
+                    "expertise": "senior",
+                    "llm_model": "deepseek-coder:6.7b",
+                    "agent_config": {
+                        "backstory": "You are a data engineer who specializes in building scalable data pipelines and ETL processes.",
+                        "goal": "Design and implement data infrastructure"
+                    }
+                },
+                {
+                    "title": "Business Analyst",
+                    "description": "Translates business needs into data requirements",
+                    "expertise": "intermediate",
+                    "llm_model": "claude-3-sonnet",
+                    "agent_config": {
+                        "backstory": "You are a business analyst who bridges the gap between business needs and technical solutions.",
+                        "goal": "Define business requirements and success metrics"
+                    }
+                }
+            ]
+        },
+        "content_creation": {
+            "name": "Content Creation Team",
+            "description": "For marketing and content development",
+            "budget_range": {"min": 30, "max": 150},
+            "roles": [
+                {
+                    "title": "Content Strategist",
+                    "description": "Plans content strategy and messaging",
+                    "expertise": "senior",
+                    "llm_model": "gpt-4",
+                    "agent_config": {
+                        "backstory": "You are a content strategist who develops compelling content plans and messaging strategies.",
+                        "goal": "Create content strategies and editorial calendars"
+                    }
+                },
+                {
+                    "title": "Copywriter",
+                    "description": "Writes compelling copy and content",
+                    "expertise": "intermediate",
+                    "llm_model": "claude-3-sonnet",
+                    "agent_config": {
+                        "backstory": "You are a skilled copywriter who creates engaging and persuasive content.",
+                        "goal": "Write compelling copy for various channels"
+                    }
+                },
+                {
+                    "title": "Social Media Manager",
+                    "description": "Manages social media presence and engagement",
+                    "expertise": "intermediate",
+                    "llm_model": "gpt-3.5-turbo",
+                    "agent_config": {
+                        "backstory": "You are a social media manager who creates engaging content and manages community engagement.",
+                        "goal": "Create social media content and engagement strategies"
+                    }
+                }
+            ]
+        },
+        "custom": {
+            "name": "Custom Team",
+            "description": "Build your own team from scratch",
+            "budget_range": {"min": 20, "max": 1000},
+            "roles": []
+        }
+    }
+    
+    return {
+        "templates": templates,
+        "categories": {
+            "startup_mvp": "Product Development",
+            "data_science": "Data & Analytics", 
+            "content_creation": "Marketing & Content",
+            "custom": "Custom"
+        }
+    } 
