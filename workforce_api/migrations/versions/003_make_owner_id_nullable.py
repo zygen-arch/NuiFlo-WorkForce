@@ -1,7 +1,7 @@
 """Make owner_id nullable for auth migration
 
 Revision ID: 003
-Revises: 002
+Revises: 740ea9042d8b
 Create Date: 2025-01-28 15:10:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '003'
-down_revision = '002'
+down_revision = '740ea9042d8b'
 branch_labels = None
 depends_on = None
 
