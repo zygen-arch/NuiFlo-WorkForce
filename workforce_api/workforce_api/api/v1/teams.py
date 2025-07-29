@@ -165,7 +165,8 @@ class RoleResponse(BaseModel):
 
 class TeamResponse(BaseModel):
     id: int
-    owner_id: int
+    auth_owner_id: Optional[str] = None  # UUID from Supabase auth
+    owner_id: Optional[int] = None  # Legacy field, now nullable
     name: str
     description: Optional[str]
     monthly_budget: Decimal
