@@ -49,13 +49,21 @@ class TeamService:
                     else:
                         expertise = ExpertiseLevel[expertise_value.upper()]
                     
+                    # Prepare agent config with system prompt and other settings
+                    agent_config = {
+                        'system_prompt': role_data.get('system_prompt', ''),
+                        'backstory': role_data.get('backstory', ''),
+                        'goals': role_data.get('goals', []),
+                        'tools': role_data.get('tools', [])
+                    }
+                    
                     role = Role(
                         team_id=team.id,
                         title=role_data.get('title', 'Team Member'),
                         description=role_data.get('description', ''),
                         expertise=expertise,
                         llm_model=role_data.get('llm_model', 'gpt-3.5-turbo'),
-                        system_prompt=role_data.get('system_prompt', ''),
+                        agent_config=agent_config,
                         is_active=role_data.get('is_active', True)
                     )
                     db.add(role)
