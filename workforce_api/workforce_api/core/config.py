@@ -12,12 +12,12 @@ class Settings(BaseSettings):
     # Environment
     environment: str = Field(default="development", env="ENVIRONMENT")
     
-    # Supabase Database Configuration
-    db_user: str = Field(..., env="DB_USER", description="Database user")
-    db_password: str = Field(..., env="DB_PASSWORD", description="Database password")
-    db_host: str = Field(..., env="DB_HOST", description="Database host")
+    # Supabase Database Configuration (optional when DATABASE_URL is provided)
+    db_user: Optional[str] = Field(default=None, env="DB_USER", description="Database user")
+    db_password: Optional[str] = Field(default=None, env="DB_PASSWORD", description="Database password")
+    db_host: Optional[str] = Field(default=None, env="DB_HOST", description="Database host")
     db_port: int = Field(5432, env="DB_PORT", description="Database port")
-    db_name: str = Field(..., env="DB_NAME", description="Database name")
+    db_name: Optional[str] = Field(default=None, env="DB_NAME", description="Database name")
     
     # Alternative: Full database URL (for Railway, Render, etc.)
     database_url: str = Field(default="", env="DATABASE_URL", description="Full database URL")
@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_nested_delimiter = "__"
+        extra = "ignore"  # Allow extra fields from environment
 
     @computed_field
     @property
@@ -72,16 +73,25 @@ class Settings(BaseSettings):
         """Construct the database URL from individual components or use DATABASE_URL."""
         # If DATABASE_URL is provided (common in cloud deployments), use it
         if self.database_url:
-            return self.database_url
+            # Ensure we're using the correct psycopg driver
+            db_url = self.database_url
+            if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
+                db_url = db_url.replace("postgresql://", "postgresql+psycopg://")
+            elif db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql+psycopg://")
+            return db_url
         
-        # Otherwise, construct from individual components  
+        # Otherwise, construct from individual components
+        if not all([self.db_user, self.db_password, self.db_host, self.db_name]):
+            raise ValueError("Either DATABASE_URL or all individual DB components (DB_USER, DB_PASSWORD, DB_HOST, DB_NAME) must be provided")
+        
         # Password is already URL-encoded in .env file, so use it directly
         # Using psycopg3 for Python 3.13 compatibility
         return f"postgresql+psycopg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}?sslmode=require"
 
-    @computed_field
-    @property 
+    @property
     def is_production(self) -> bool:
+        """Check if running in production."""
         return self.environment.lower() == "production"
     
     @computed_field
