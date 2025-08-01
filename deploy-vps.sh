@@ -42,9 +42,9 @@ fi
 
 echo -e "${GREEN}✅ Environment file found${NC}"
 
-# Build the Docker image
+# Build the Docker image from the new backend directory
 echo -e "${YELLOW}🔨 Building Docker image...${NC}"
-docker build -f workforce_api/Dockerfile.api -t $IMAGE_NAME ./workforce_api
+docker build -f backend/Dockerfile -t $IMAGE_NAME ./backend
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Docker image built successfully${NC}"
@@ -69,8 +69,12 @@ ssh $VPS_USER@$VPS_IP << 'EOF'
     echo "📥 Loading Docker image..."
     docker load < nuiflo-api.tar.gz
     
-    echo "🛑 Stopping existing container..."
+    echo "🛑 Stopping and removing existing containers..."
     docker-compose down || true
+    docker rm -f nuiflo-workforce-api || true
+    
+    echo "🧹 Cleaning up old images..."
+    docker image prune -f
     
     echo "🚀 Starting new container..."
     docker-compose up -d
